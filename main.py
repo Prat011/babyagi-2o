@@ -1,14 +1,18 @@
 import os, json, traceback, subprocess, sys
 from time import sleep
 from litellm import completion
+from dotenv import load_dotenv
+from composio_langchain import ComposioToolSet, App, Action
 
+toolset = ComposioToolSet()
+load_dotenv()
 # ANSI escape codes for color and formatting
 class Colors:
     HEADER = '\033[95m'; OKBLUE = '\033[94m'; OKCYAN = '\033[96m'; OKGREEN = '\033[92m'
     WARNING = '\033[93m'; FAIL = '\033[91m'; ENDC = '\033[0m'; BOLD = '\033[1m'; UNDERLINE = '\033[4m'
 
 # Configuration
-MODEL_NAME = os.environ.get('LITELLM_MODEL', 'anthropic/claude-3-5-sonnet-20240620')
+MODEL_NAME = os.environ.get('LITELLM_MODEL', 'bedrock/anthropic.claude-3-sonnet-20240229-v1:0')
 tools, available_functions = [], {}
 MAX_TOOL_OUTPUT_LENGTH = 5000  # Adjust as needed
 
@@ -33,6 +37,22 @@ def register_tool(name, func, description, parameters):
         }
     })
     print(f"{Colors.OKGREEN}{Colors.BOLD}Registered tool:{Colors.ENDC} {name}")
+
+def list_composio_tools():
+    return [app.name for app in toolset.get_apps()]
+
+def find_actions_for_tools(toolName, use_case):
+    return toolset.find_actions_by_use_case(toolName, use_case=use_case)
+
+def get_action_schema(actionName):
+    s = toolset.get_action_schemas(actions=[actionName])
+    return s[0].parameters.properties
+
+def execute_composio_action(actionName, params):
+    resp = toolset.execute_action(action=actionName, params=params)
+    return resp
+
+
 
 def create_or_update_tool(name, code, description, parameters):
     try:
@@ -100,7 +120,20 @@ register_tool("install_package", install_package, "Installs a Python package usi
 })
 
 register_tool("task_completed", task_completed, "Marks the current task as completed.", {})
+register_tool("list_composio_tools", list_composio_tools, "Lists available Composio tools.", {})
+register_tool("find_actions_for_tools", find_actions_for_tools, "Finds actions for a given Composio tool and use case.", {
+    "toolName": {"type": "string", "description": "The name of the tool to find actions for."},
+    "use_case": {"type": "string", "description": "The use case to search for actions."}
+})
 
+register_tool("get_action_schema", get_action_schema, "Gets the schema for an action.", {
+    "actionName": {"type": "string", "description": "The name of the action to get the schema for."}
+})
+
+register_tool("execute_composio_agent", execute_composio_agent, "Executes an action for a Composio tool.", {
+    "actionName": {"type": "string", "description": "The name of the Composio Action to execute."},
+    "params": {"type": "object", "description": "The parameters to pass to the action, obtained from 'get_action_schema' with values from the user."}
+})
 # Main loop to handle user input and LLM interaction
 def run_main_loop(user_input):
     # Include available API keys in the system prompt
